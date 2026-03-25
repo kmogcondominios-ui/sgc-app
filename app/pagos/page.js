@@ -1,59 +1,134 @@
 'use client'
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
-import { generarYSubirPDF } from "@/lib/pdfUpload"
-import { enviarWhatsApp } from "@/lib/whatsapp"
+import { registrarPagoCompleto } from "@/lib/pagoCompleto"
 
 export default function Pagos() {
   const [condominios, setCondominios] = useState([])
-  const [id, setId] = useState("")
+  const [selected, setSelected] = useState("")
   const [monto, setMonto] = useState("")
+  const [loading, setLoading] = useState(false)
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => {
+    cargarCondominos()
+  }, [])
 
-  async function cargar() {
-    const { data } = await supabase.from("condominos").select("*")
-    setCondominios(data)
+  async function cargarCondominos() {
+    const { data, error } = await supabase
+      .from("condominos")
+      .select("*")
+
+    console.log("CONDÓMINOS:", data)
+    console.log("ERROR:", error)
+
+    if (data) setCondominios(data)
   }
 
-  async function guardar() {
-    const cond = condominos.find(c => c.id === id)
+  async function registrarPago() {
+    if (loading) return
 
-    const { data } = await supabase
-      .from("pagos")
-      .insert([{ condomino_id: id, monto }])
-      .select()
+    if (!selected || !monto) {
+      alert("Faltan datos")
+      return
+    }
 
-    const pdfUrl = await generarYSubirPDF({ monto })
+    // ✅ CORRECCIÓN AQUÍ (condominios correcto)
+    const cond = condominios.find(c => c.id === selected)
 
-    await supabase.from("recibos").insert([
-      { pago_id: data[0].id, pdf_url: pdfUrl }
-    ])
+    if (!cond) {
+      alert("Condómino no encontrado")
+      return
+    }
 
-    enviarWhatsApp(cond.telefono, pdfUrl)
+    setLoading(true)
+
+    try {
+      const pdfUrl = await registrarPagoCompleto({
+        condomino_id: selected,
+        nombre: cond.nombre,
+        monto: Number(monto)
+      })
+
+      alert("Pago registrado y recibo generado ✅")
+
+      // 📲 WhatsApp automático (opcional)
+      if (cond.telefono) {
+        const mensaje = `Hola ${cond.nombre}, aquí está tu recibo: ${pdfUrl}`
+        window.open(`https://wa.me/52${cond.telefono}?text=${encodeURIComponent(mensaje)}`)
+      }
+
+    } catch (err) {
+      console.error("ERROR COMPLETO:", err)
+      alert("Error al registrar pago")
+    }
+
+    setLoading(false)
+    setMonto("")
   }
 
   return (
-    <div>
-      <h1>Registrar pago</h1>
+    <div style={container}>
+      <h1>💰 Pagos</h1>
 
-      <select onChange={e => setId(e.target.value)}>
-        <option>Selecciona</option>
-        {condominios.map(c => (
-          <option key={c.id} value={c.id}>
-            {c.nombre}
-          </option>
-        ))}
-      </select>
+      <div style={form}>
+        <select
+          value={selected}
+          onChange={e => setSelected(e.target.value)}
+          style={input}
+        >
+          <option value="">Selecciona condómino</option>
+          {condominios.map(c => (
+            <option key={c.id} value={c.id}>
+              {c.nombre} - {c.vivienda}
+            </option>
+          ))}
+        </select>
 
-      <input
-        placeholder="Monto"
-        onChange={e => setMonto(e.target.value)}
-      />
+        <input
+          placeholder="Monto"
+          value={monto}
+          onChange={e => setMonto(e.target.value)}
+          style={input}
+        />
 
-      <button onClick={guardar}>
-        Guardar y enviar
-      </button>
+        <button
+          onClick={registrarPago}
+          disabled={loading}
+          style={button}
+        >
+          {loading ? "Guardando..." : "Registrar Pago"}
+        </button>
+      </div>
     </div>
   )
+}
+
+// 🎨 estilos
+
+const container = {
+  padding: "20px",
+  color: "white"
+}
+
+const form = {
+  display: "grid",
+  gap: "10px",
+  maxWidth: "300px"
+}
+
+const input = {
+  padding: "10px",
+  borderRadius: "8px",
+  border: "1px solid #334155",
+  background: "#0f172a",
+  color: "white"
+}
+
+const button = {
+  padding: "10px",
+  borderRadius: "8px",
+  border: "none",
+  background: "#16a34a",
+  color: "white",
+  cursor: "pointer"
 }
