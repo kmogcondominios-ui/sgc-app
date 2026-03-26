@@ -1,85 +1,145 @@
 'use client'
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
-import { registrarPagoCompleto } from "@/lib/pagoCompleto"
+import { generarYSubirPDF } from "@/lib/pdfUpload"
 
 export default function Pagos() {
   const [condominios, setCondominios] = useState([])
+  const [pagos, setPagos] = useState([])
+
   const [selected, setSelected] = useState("")
+  const [cond, setCond] = useState(null)
+
   const [monto, setMonto] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [concepto, setConcepto] = useState("Mantenimiento")
+
+  // 🔥 FILTROS
+  const [filtroCond, setFiltroCond] = useState("")
+  const [desde, setDesde] = useState("")
+  const [hasta, setHasta] = useState("")
+
+  const [cargando, setCargando] = useState(false)
 
   useEffect(() => {
-    cargarCondominos()
+    cargarTodo()
   }, [])
 
-  async function cargarCondominos() {
-    const { data, error } = await supabase
-      .from("condominos")
+  async function cargarTodo() {
+    const { data: conds } = await supabase.from("condominos").select("*")
+    const { data: pagosData } = await supabase
+      .from("pagos")
       .select("*")
+      .order("fecha", { ascending: false })
 
-    console.log("CONDÓMINOS:", data)
-    console.log("ERROR:", error)
+    setCondominios(conds || [])
+    setPagos(pagosData || [])
+  }
 
-    if (data) setCondominios(data)
+  function seleccionar(id) {
+    setSelected(id)
+    const c = condominios.find(x => x.id === id)
+    setCond(c)
   }
 
   async function registrarPago() {
-    if (loading) return
-
-    if (!selected || !monto) {
-      alert("Faltan datos")
-      return
-    }
-
-    // ✅ CORRECCIÓN AQUÍ (condominios correcto)
-    const cond = condominios.find(c => c.id === selected)
-
-    if (!cond) {
-      alert("Condómino no encontrado")
-      return
-    }
-
-    setLoading(true)
-
     try {
-      const pdfUrl = await registrarPagoCompleto({
-        condomino_id: selected,
+      if (!cond) return alert("Selecciona condómino")
+      if (!monto) return alert("Ingresa monto")
+
+      setCargando(true)
+
+      const url = await generarYSubirPDF({
         nombre: cond.nombre,
-        monto: Number(monto)
+        monto,
+        concepto,
+        fecha: new Date().toLocaleDateString()
       })
 
-      alert("Pago registrado y recibo generado ✅")
+      const { error } = await supabase.from("pagos").insert([
+        {
+          condomino_id: cond.id,
+          monto,
+          concepto,
+          fecha: new Date(),
+          comprobante: url
+        }
+      ])
 
-      // 📲 WhatsApp automático (opcional)
+      if (error) throw error
+
       if (cond.telefono) {
-        const mensaje = `Hola ${cond.nombre}, aquí está tu recibo: ${pdfUrl}`
-        window.open(`https://wa.me/52${cond.telefono}?text=${encodeURIComponent(mensaje)}`)
+        const mensaje = `Hola ${cond.nombre}, aquí está tu recibo: ${url}`
+
+        window.open(
+          `https://wa.me/52${cond.telefono}?text=${encodeURIComponent(mensaje)}`
+        )
       }
+
+      alert("✅ Pago registrado")
+
+      setMonto("")
+      setConcepto("")
+      setSelected("")
+      setCond(null)
+
+      cargarTodo()
 
     } catch (err) {
       console.error("ERROR COMPLETO:", err)
       alert("Error al registrar pago")
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  // 🔥 obtener nombre
+  function getNombre(id) {
+    const c = condominios.find(x => x.id === id)
+    return c?.nombre || "Desconocido"
+  }
+
+  // 🔥 reenviar
+  function reenviar(pago) {
+    const c = condominios.find(x => x.id === pago.condomino_id)
+    if (!c?.telefono) return alert("Sin teléfono")
+
+    const mensaje = `Hola ${c.nombre}, aquí está tu recibo: ${pago.comprobante}`
+
+    window.open(
+      `https://wa.me/52${c.telefono}?text=${encodeURIComponent(mensaje)}`
+    )
+  }
+
+  // 🔥 FILTRADO
+  const pagosFiltrados = pagos.filter(p => {
+    let ok = true
+
+    if (filtroCond) {
+      ok = ok && p.condomino_id == filtroCond
     }
 
-    setLoading(false)
-    setMonto("")
-  }
+    if (desde) {
+      ok = ok && new Date(p.fecha) >= new Date(desde)
+    }
+
+    if (hasta) {
+      ok = ok && new Date(p.fecha) <= new Date(hasta)
+    }
+
+    return ok
+  })
 
   return (
     <div style={container}>
       <h1>💰 Pagos</h1>
 
+      {/* FORM */}
       <div style={form}>
-        <select
-          value={selected}
-          onChange={e => setSelected(e.target.value)}
-          style={input}
-        >
-          <option value="">Selecciona condómino</option>
+        <select value={selected} onChange={e => seleccionar(e.target.value)}>
+          <option value="">Seleccionar condómino</option>
           {condominios.map(c => (
             <option key={c.id} value={c.id}>
-              {c.nombre} - {c.vivienda}
+              {c.nombre}
             </option>
           ))}
         </select>
@@ -88,17 +148,56 @@ export default function Pagos() {
           placeholder="Monto"
           value={monto}
           onChange={e => setMonto(e.target.value)}
-          style={input}
         />
 
-        <button
-          onClick={registrarPago}
-          disabled={loading}
-          style={button}
-        >
-          {loading ? "Guardando..." : "Registrar Pago"}
+        <input
+          placeholder="Concepto"
+          value={concepto}
+          onChange={e => setConcepto(e.target.value)}
+        />
+
+        <button onClick={registrarPago} disabled={cargando}>
+          {cargando ? "Procesando..." : "Registrar"}
         </button>
       </div>
+
+      {/* 🔥 FILTROS */}
+      <div style={filtros}>
+        <select onChange={e => setFiltroCond(e.target.value)}>
+          <option value="">Todos los condóminos</option>
+          {condominios.map(c => (
+            <option key={c.id} value={c.id}>
+              {c.nombre}
+            </option>
+          ))}
+        </select>
+
+        <input type="date" onChange={e => setDesde(e.target.value)} />
+        <input type="date" onChange={e => setHasta(e.target.value)} />
+      </div>
+
+      {/* HISTORIAL */}
+      <h2>📄 Historial de pagos</h2>
+
+      {pagosFiltrados.map(p => (
+        <div key={p.id} style={card}>
+          <div>
+            <strong>{getNombre(p.condomino_id)}</strong>
+            <p>${p.monto} - {p.concepto}</p>
+            <small>{new Date(p.fecha).toLocaleDateString()}</small>
+          </div>
+
+          <div style={actions}>
+            <button onClick={() => window.open(p.comprobante)} style={btnPdf}>
+              📄 PDF
+            </button>
+
+            <button onClick={() => reenviar(p)} style={btnWa}>
+              📲 WhatsApp
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -106,29 +205,50 @@ export default function Pagos() {
 // 🎨 estilos
 
 const container = {
-  padding: "20px",
-  color: "white"
+  display: "flex",
+  flexDirection: "column",
+  gap: "20px"
 }
 
 const form = {
-  display: "grid",
+  display: "flex",
   gap: "10px",
-  maxWidth: "300px"
+  flexWrap: "wrap"
 }
 
-const input = {
-  padding: "10px",
-  borderRadius: "8px",
-  border: "1px solid #334155",
-  background: "#0f172a",
-  color: "white"
+const filtros = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap"
 }
 
-const button = {
-  padding: "10px",
-  borderRadius: "8px",
-  border: "none",
-  background: "#16a34a",
+const card = {
+  background: "rgba(255,255,255,0.03)",
+  padding: "12px",
+  borderRadius: "10px",
+  display: "flex",
+  justifyContent: "space-between"
+}
+
+const actions = {
+  display: "flex",
+  gap: "10px"
+}
+
+const btnPdf = {
+  background: "#38bdf8",
   color: "white",
+  border: "none",
+  padding: "8px",
+  borderRadius: "8px",
+  cursor: "pointer"
+}
+
+const btnWa = {
+  background: "#22c55e",
+  color: "white",
+  border: "none",
+  padding: "8px",
+  borderRadius: "8px",
   cursor: "pointer"
 }

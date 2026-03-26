@@ -1,22 +1,27 @@
 'use client'
-import { useTheme } from "./ThemeProvider"
+
+import { useTheme } from "@/components/ThemeProvider"
 
 export default function ThemeToggle() {
-  const { dark, toggleTheme } = useTheme()
+  const theme = useTheme()
+
+  // 🔥 evita error si contexto no está listo
+  if (!theme) return null
+
+  const { dark, toggleTheme } = theme
 
   return (
     <button onClick={toggleTheme} style={btn}>
-      {dark ? "🌙 Oscuro" : "☀️ Claro"}
+      {dark ? "🌙" : "☀️"}
     </button>
   )
 }
 
 const btn = {
-  padding: "6px 12px",
+  padding: "8px 12px",
   borderRadius: "8px",
   border: "none",
   cursor: "pointer",
-  background: "#38bdf8",
-  color: "#020617",
-  fontWeight: "bold"
+  background: "#334155",
+  color: "white"
 }

@@ -3,164 +3,148 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 
 export default function Condominios() {
-  const [lista, setLista] = useState([])
+  const [condominios, setCondominios] = useState([])
 
   const [nombre, setNombre] = useState("")
-  const [vivienda, setVivienda] = useState('')
-  const [cuota, setCuota] = useState("")
   const [telefono, setTelefono] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [vivienda, setVivienda] = useState("")
+  const [cuota, setCuota] = useState("")
+
+  const [editando, setEditando] = useState(null)
 
   useEffect(() => {
     cargar()
   }, [])
 
   async function cargar() {
-    const { data, error } = await supabase
-      .from("condominos")
-      .select("*")
-
-    console.log("SELECT DATA:", data)
-    console.log("SELECT ERROR:", error)
-
-    if (data) setLista(data)
+    const { data } = await supabase.from("condominos").select("*")
+    setCondominios(data || [])
   }
 
-  async function agregar() {
-    if (loading) return
+  async function guardar() {
+    if (!nombre) return alert("Nombre requerido")
 
-    if (!nombre || !vivienda || !cuota) {
-      alert("Faltan datos")
-      return
+    // 🔥 EDITAR
+    if (editando) {
+      const { error } = await supabase
+        .from("condominos")
+        .update({
+          nombre,
+          telefono,
+          vivienda,
+          cuota
+        })
+        .eq("id", editando)
+
+      if (error) return alert("Error al actualizar")
+
+      setEditando(null)
+    } else {
+      // 🔥 CREAR
+      const { error } = await supabase
+        .from("condominos")
+        .insert([{ nombre, telefono, vivienda, cuota }])
+
+      if (error) return alert("Error al guardar")
     }
 
-    setLoading(true)
-
-    const { data, error } = await supabase.from("condominos").insert([
-      {
-        nombre,
-        vivienda: Number(vivienda),
-        cuota: Number(cuota),
-        telefono
-      }
-    ])
-
-    console.log("INSERT DATA:", data)
-    console.log("INSERT ERROR:", error)
-
-    setLoading(false)
-
-    if (error) {
-      alert("Error al guardar")
-      return
-    }
-
-    // limpiar formulario
-    setNombre("")
-    setVivienda('')
-    setCuota("")
-    setTelefono("")
-
-    // recargar lista
+    limpiar()
     cargar()
+  }
+
+  function editar(c) {
+    setEditando(c.id)
+    setNombre(c.nombre)
+    setTelefono(c.telefono || "")
+    setVivienda(c.vivienda || "")
+    setCuota(c.cuota || "")
+  }
+
+  function limpiar() {
+    setNombre("")
+    setTelefono("")
+    setVivienda("")
+    setCuota("")
   }
 
   return (
     <div style={container}>
-      <h1 style={title}>🏠 Condominios</h1>
+      <h1>🏠 Condóminos</h1>
 
-      {/* FORMULARIO */}
+      {/* FORM */}
       <div style={form}>
-        <input
-          placeholder="Nombre"
-          value={nombre}
-          onChange={e => setNombre(e.target.value)}
-          style={input}
-        />
+        <input placeholder="Nombre" value={nombre} onChange={e => setNombre(e.target.value)} />
+        <input placeholder="Teléfono" value={telefono} onChange={e => setTelefono(e.target.value)} />
+        <input placeholder="Vivienda" value={vivienda} onChange={e => setVivienda(e.target.value)} />
+        <input placeholder="Cuota" value={cuota} onChange={e => setCuota(e.target.value)} />
 
-        <input
-          placeholder="Vivienda (101)"
-          value={vivienda}
-          onChange={e => setVivienda(e.target.value)}
-          style={input}
-        />
-
-        <input
-          placeholder="Cuota"
-          value={cuota}
-          onChange={e => setCuota(e.target.value)}
-          style={input}
-        />
-
-        <input
-          placeholder="Teléfono"
-          value={telefono}
-          onChange={e => setTelefono(e.target.value)}
-          style={input}
-        />
-
-        <button
-          onClick={agregar}
-          disabled={loading}
-          style={button}
-        >
-          {loading ? "Guardando..." : "Agregar"}
+        <button onClick={guardar}>
+          {editando ? "💾 Actualizar" : "➕ Guardar"}
         </button>
+
+        {editando && (
+          <button onClick={limpiar} style={btnCancel}>
+            ❌ Cancelar
+          </button>
+        )}
       </div>
 
       {/* LISTA */}
-      <div>
-        {lista.map(c => (
-          <div key={c.id} style={card}>
+      {condominios.map(c => (
+        <div key={c.id} style={card}>
+          <div>
             <strong>{c.nombre}</strong>
-            <p>Depto: {c.vivienda}</p>
-            <p>Cuota: ${c.cuota}</p>
-            <p>Tel: {c.telefono || "—"}</p>
+            <p style={{ opacity: 0.6 }}>
+              {c.vivienda} | {c.telefono || "Sin teléfono"} | ${c.cuota}
+            </p>
           </div>
-        ))}
-      </div>
+
+          <button onClick={() => editar(c)} style={btnEdit}>
+            ✏️ Editar
+          </button>
+        </div>
+      ))}
     </div>
   )
 }
 
-// 🎨 ESTILOS
+// 🎨 estilos
 
 const container = {
-  padding: "20px",
-  color: "white"
-}
-
-const title = {
-  marginBottom: "20px"
+  display: "flex",
+  flexDirection: "column",
+  gap: "20px"
 }
 
 const form = {
-  display: "grid",
+  display: "flex",
   gap: "10px",
-  marginBottom: "20px",
-  maxWidth: "300px"
+  flexWrap: "wrap"
 }
 
-const input = {
-  padding: "10px",
-  borderRadius: "8px",
-  border: "1px solid #334155",
-  background: "#0f172a",
-  color: "white"
+const card = {
+  background: "rgba(255,255,255,0.03)",
+  padding: "12px",
+  borderRadius: "10px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center"
 }
 
-const button = {
-  padding: "10px",
-  borderRadius: "8px",
+const btnEdit = {
+  background: "#38bdf8",
   border: "none",
-  background: "#2563eb",
+  padding: "8px 10px",
+  borderRadius: "8px",
   color: "white",
   cursor: "pointer"
 }
 
-const card = {
-  background: "#1e293b",
-  padding: "15px",
-  marginBottom: "10px",
-  borderRadius: "10px"
+const btnCancel = {
+  background: "#ef4444",
+  border: "none",
+  padding: "8px 10px",
+  borderRadius: "8px",
+  color: "white",
+  cursor: "pointer"
 }

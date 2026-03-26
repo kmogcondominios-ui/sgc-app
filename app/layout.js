@@ -1,3 +1,4 @@
+import LogoutButton from "@/components/LogoutButton"
 import NavLink from "@/components/NavLink"
 import Logo from "@/components/Logo"
 import ThemeToggle from "@/components/ThemeToggle"
@@ -6,7 +7,7 @@ import { ThemeProvider } from "@/components/ThemeProvider"
 export default function RootLayout({ children }) {
   return (
     <html lang="es">
-      <body style={{ margin: 0, fontFamily: "Inter, system-ui, Arial" }}>
+      <body style={{ margin: 0, fontFamily: "Inter, system-ui, Arial", transition: "all 0.3s" }}>
 
         <ThemeProvider>
 
@@ -22,6 +23,7 @@ export default function RootLayout({ children }) {
 
             <div style={right}>
               <ThemeToggle />
+              <LogoutButton />
               <Logo src="/logo-der.png" />
             </div>
           </header>
@@ -33,6 +35,8 @@ export default function RootLayout({ children }) {
             <NavLink href="/condominios" label="🏠 Condóminos" />
             <NavLink href="/adeudos" label="⚠️ Adeudos" />
             <NavLink href="/recibos" label="📄 Recibos" />
+            <NavLink href="/proveedores" label="🏢 Proveedores" />
+            <NavLink href="/egresos" label="💸 Egresos" />
           </nav>
 
           {/* CONTENIDO */}
@@ -78,7 +82,6 @@ const title = {
   fontWeight: "600"
 }
 
-// 🔥 NAV CENTRADO
 const nav = {
   display: "flex",
   justifyContent: "center",
